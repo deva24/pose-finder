@@ -2,6 +2,8 @@ import numpy as np
 import cv2
 import math
 
+poly_interest = 79
+
 
 def capture():
     cap = cv2.VideoCapture(1)
@@ -49,7 +51,7 @@ def qrcodescan(frame):
     global ind, printit, mind, debugit
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    thr = math.floor(frame.mean())
+    thr = math.floor(frame.mean()*2/3)
     ret, thresh = cv2.threshold(gray, thr, 255, 0)
     thresh = cv2.blur(thresh, (3, 3))
     contours, _ = cv2.findContours(
@@ -58,24 +60,36 @@ def qrcodescan(frame):
     fromAngle = -30
     toAngle = 30
 
+    #contours = [contours[poly_interest]]
+
     if not debugit:
+
+        # algorithm tries to find a 4 straight lines
+        #
+        # A--B
+        # |  |
+        # D--C
+        # 
+
+
         for cont in contours:
             len_c = len(cont)
 
-            aLine = []
-            foundHorizontalLine = False
-
-            i = int(len_c * 0.4)
-            loop_over_len = int(len_c*1.6)
-
+            foundAB = False
             fromAngle = -30
             toAngle = 30
 
             attempt = 0
+
+            # attempt to find line AB
             while attempt < 2:
+                lineAB = []
+                i = int(len_c * 0.4)
+                loop_over_len = int(len_c*1.6)
+
                 while i < loop_over_len:
                     pa = cont[(i-1) % len_c][0]
-                    pb = cont[i% len_c][0]
+                    pb = cont[i % len_c][0]
                     pc = cont[(i+1) % len_c][0]
                     pd = cont[(i+2) % len_c][0]
 
@@ -92,46 +106,60 @@ def qrcodescan(frame):
                     if dis_bc > dis_ab and dis_bc > dis_cd:
                         if angle_bc >= fromAngle and angle_bc <= toAngle:
                             lookslikeLine = True
+                    elif len(lineAB)>0 and angle_bc >= fromAngle and angle_bc <= toAngle:
+                        lookslikeLine=True
                     elif dis_ab > dis_bc and dis_cd > dis_bc:
                         if angle_ab >= fromAngle and angle_ab <= toAngle and angle_cd >= fromAngle and angle_cd <= toAngle:
                             lookslikeLine = True
+                    
 
                     if lookslikeLine:
-                        aLine.append(i)
-                        
+                        lineAB.append(i)
+
                     else:
-                        if len(aLine) > 0:
-                            lineIndexBegin = aLine[0]
-                            lineIndexEnd = aLine[len(aLine)-1] + 1
+                        if len(lineAB) > 0:
+                            lineIndexBegin = lineAB[0]
+                            lineIndexEnd = lineAB[len(lineAB)-1] + 1
 
                             pa = cont[lineIndexBegin % len_c][0]
                             pb = cont[lineIndexEnd % len_c][0]
                             if distance(pa, pb) > 5:
-                                foundHorizontalLine=True
+                                foundAB = True
                                 break
                             else:
-                                aLine=[]
+                                lineAB = []
                     i += 1
-                if foundHorizontalLine:
+                if foundAB:
                     # line stores index i of a line consisting of point[i] and point[i+1] in contour
-                    lineIndexBegin = aLine[0]
-                    lineIndexEnd = aLine[len(aLine)-1] + 1
+                    lineIndexBegin = lineAB[0]
+                    lineIndexEnd = lineAB[len(lineAB)-1] + 1
 
                     pa = cont[lineIndexBegin % len_c][0]
                     pb = cont[lineIndexEnd % len_c][0]
 
-                    if distance(pa, pb) > 5:
+                    if distance(pa, pb) >= 5:
                         if attempt == 0:
                             cv2.line(frame, toplePoint(pa),
-                                    toplePoint(pb), (0, 0, 255), 2)
+                                toplePoint(pb), (0, 0, 255), 2)
                         else:
                             cv2.line(frame, toplePoint(pa),
-                                    toplePoint(pb), (255, 0, 0), 2)
+                                toplePoint(pb), (0, 100, 255), 2)
                         break
+                    else:
+                        foundAB=False
 
-                fromAngle-=90
-                toAngle-=90
-                attempt+=1
+
+                fromAngle += 45
+                toAngle +=45
+                attempt += 1
+    
+            # if no AB like line found then skip lower code
+            if not foundAB:
+                continue
+
+            # attempt to find line BC
+
+
     else:
         cont = contours[ind]
         len_c = len(cont)
@@ -143,7 +171,8 @@ def qrcodescan(frame):
                 cv2.line(frame, toplePoint(pa), toplePoint(pb), (0, 0, 255), 2)
                 i += 1
             if printit:
-                print('index ' + str(ind))
+                print('index1 ' + str(ind))
+                print('=======')
         else:
             mind = mind % len_c
             pa = cont[mind][0]
@@ -152,11 +181,12 @@ def qrcodescan(frame):
 
             if printit:
                 angle = math.atan2(pb[1]-pa[1], pb[0]-pa[0]) / math.pi*180
+                print('mind ' + str(mind))
                 print('pa ' + str(pa))
                 print('pb ' + str(pb))
                 print('ang ' + str(angle))
                 print('dist ' + str(distance(pa, pb)))
-                print('\n')
+                print('=======')
 
 
 def toplePoint(pa):
@@ -165,15 +195,13 @@ def toplePoint(pa):
 
 def checkfn():
     global ind, printit, mind, debugit
-
     doRescan = True
-
     while True:
         key = cv2.waitKey(1) & 0xFF
 
         if key == ord('q'):
             break
-        
+
         elif key == ord(']'):
             ind += 1
             doRescan = True
@@ -187,7 +215,7 @@ def checkfn():
             doRescan = True
 
         elif key == ord('o'):
-            ind = 72
+            ind = poly_interest
             doRescan = True
 
         elif key == ord(','):
@@ -209,10 +237,11 @@ def checkfn():
         if doRescan:
             frame = cv2.imread('sampleInput.png')
             qrcodescan(frame)
-            frame = cv2.resize(frame,(frame.shape[1] * 2,frame.shape[0] * 2),interpolation=cv2.INTER_AREA)
+            frame = cv2.resize(
+                frame, (frame.shape[1] * 2, frame.shape[0] * 2), interpolation=cv2.INTER_AREA)
             cv2.imshow('frame', frame)
-            printit=False
-            doRescan=False
+            printit = False
+            doRescan = False
 
     cv2.destroyAllWindows()
 
@@ -240,7 +269,7 @@ def scan():
     cv2.destroyAllWindows()
 
 
-checkfn()
-#scan()
+# checkfn()
+scan()
 
 exit
