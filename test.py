@@ -18,18 +18,35 @@ def capture():
 # capture()
 
 
-def distance(a, b):
+def calc_distance(a, b):
     return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2)
 
 
-def angle1(a, b):
+def calc_angle(a, b):
     return math.atan2(b[1]-b[0], a[1]-a[0])*180/math.pi
 
 
+def line_intersection(line1, line2):
+    xdiff = (line1[0][0] - line1[1][0], line2[0][0] - line2[1][0])
+    ydiff = (line1[0][1] - line1[1][1], line2[0][1] - line2[1][1])
+
+    def det(a, b):
+        return a[0] * b[1] - a[1] * b[0]
+
+    div = det(xdiff, ydiff)
+    if div == 0:
+        raise None
+
+    d = (det(*line1), det(*line2))
+    x = det(d, xdiff) / div
+    y = det(d, ydiff) / div
+    return x, y
+
+
 def deviation(a, b, c):
-    ab = distance(a, b)
-    bc = distance(b, c)
-    ac = distance(a, c)
+    ab = calc_distance(a, b)
+    bc = calc_distance(b, c)
+    ac = calc_distance(a, c)
 
     # if obtuse triangle then point b doesnt lie between linesegment ac
     if(ab >= ac or bc >= ac):
@@ -50,10 +67,13 @@ ind = 0
 mind = -1
 printit = False
 
+
 def findLines(cont):
     i = 0
     len_c = len(cont)
+    len_cm = int(len_c*1.3)
 
+    predictedDistances = []
     predictedLines = []
     predictedLine = None
 
@@ -72,7 +92,12 @@ def findLines(cont):
     ang_bc = None
     ang_ac = None
 
-    while i < len_c:
+    isFirstLine = True
+
+    while i < len_cm:
+        if i+2>len_c and len(predictedLines) > 0 and (i+2) % len_c > predictedLines[0][0] % len_c:
+            break
+
         if type(pa) == type(None):
             pa = cont[i % len_c][0]
         if type(pb) == type(None):
@@ -81,11 +106,11 @@ def findLines(cont):
             pc = cont[(i+2) % len_c][0]
 
         if type(dis_ab) == type(None):
-            dis_ab = distance(pa, pb)
+            dis_ab = calc_distance(pa, pb)
         if type(dis_bc) == type(None):
-            dis_bc = distance(pb, pc)
+            dis_bc = calc_distance(pb, pc)
         if type(dis_ac) == type(None):
-            dis_ac = distance(pa, pc)
+            dis_ac = calc_distance(pa, pc)
 
         # if type(ang_ab) == type(None):
         #     ang_ab = angle1(pa, pb)
@@ -100,11 +125,14 @@ def findLines(cont):
             didMerge = True
 
         if didMerge:
-            if not lineWasFound:
-                predictedLine = [(i) % len_c, (i+1) % len_c]
-                predictedLines.append(predictedLine)
-            else:
-                predictedLine[1] = (i+1) % len_c
+            if not isFirstLine:
+                if not lineWasFound:
+                    predictedLine = [(i) % len_c, (i+1) % len_c]
+                    predictedLines.append(predictedLine)
+                    predictedDistances.append(dis_ac)
+                else:
+                    predictedLine[1] = (i+1) % len_c
+                    predictedDistances[len(predictedDistances)-1] = dis_ac
 
             if len(acc_line) == 0:
                 acc_line.append(i)
@@ -134,12 +162,13 @@ def findLines(cont):
         else:
             # remove predicted line if its too short
             if type(predictedLine) != type(None):
-                pl1 = cont[predictedLine[0]%len_c][0]
-                pl2 = cont[(predictedLine[1]+1)%len_c][0]
+                pl1 = cont[predictedLine[0] % len_c][0]
+                pl2 = cont[(predictedLine[1]+1) % len_c][0]
 
-                if distance(pl1,pl2) < 5:
+                if calc_distance(pl1, pl2) < 5:
                     predictedLines.pop()
-                predictedLine=None
+                    predictedDistances.pop()
+                predictedLine = None
 
             # change variable like
             #
@@ -161,10 +190,12 @@ def findLines(cont):
             # ang_ac = None
 
             lineWasFound = False
+            isFirstLine = False
             # end if
         i += 1
         # end while i < len_cc
-    return predictedLines
+
+    return predictedLines, predictedDistances
 
 
 def qrcodescan(frame):
@@ -181,29 +212,29 @@ def qrcodescan(frame):
 
     if not debugit:
         for cont in contours:
-            predictedLines = findLines(cont)
+            predictedLines, distances = findLines(cont)
 
             len_c = len(cont)
-            colors = [ (0, 175, 255), (0, 180, 0),(255,255,0), (255, 0, 0)]
-            firstColor =(0, 0, 255)
+            colors = [(0, 175, 255), (0, 180, 0), (255, 255, 0), (255, 0, 0)]
+            firstColor = (0, 0, 255)
             ic = 0
             lc = len(colors)
-            doFirstColor=True
+            doFirstColor = True
             for lineIndices in predictedLines:
                 pa = cont[lineIndices[0] % len_c][0]
                 pb = cont[(lineIndices[1]+1) % len_c][0]
                 if doFirstColor:
-                    doFirstColor=False
+                    doFirstColor = False
 
                     cv2.line(frame, toplePoint(pa),
-                         toplePoint(pb), firstColor, 2)
+                             toplePoint(pb), firstColor, 2)
                 else:
                     cv2.line(frame, toplePoint(pa),
-                         toplePoint(pb), colors[ic % lc], 2)
+                             toplePoint(pb), colors[ic % lc], 2)
                 ic += 1
 
             # end for cont in contours
-        cv2.line(frame,(10,10),(15,10),(0,0,255),2)
+        cv2.line(frame, (10, 10), (15, 10), (0, 0, 255), 2)
         # end if not degugit
 
     else:
@@ -231,7 +262,7 @@ def qrcodescan(frame):
                 print('pa ' + str(pa))
                 print('pb ' + str(pb))
                 print('ang ' + str(angle))
-                print('dist ' + str(distance(pa, pb)))
+                print('dist ' + str(calc_distance(pa, pb)))
                 print('=======')
 
 
@@ -316,6 +347,6 @@ def scan():
 
 
 checkfn()
-#scan()
+# scan()
 
 exit
