@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 import math
 
-poly_interest = 99
+poly_interest = 105
 
 
 def capture():
@@ -62,12 +62,6 @@ def deviation(a, b, c):
     return ret, dist
 
 
-debugit = False
-ind = 0
-mind = -1
-printit = False
-
-
 def findLines(cont):
     i = 0
     len_c = len(cont)
@@ -75,6 +69,8 @@ def findLines(cont):
 
     predictedDistances = []
     predictedLines = []
+    pointLineSegments = []
+    pointLineSegment = []
     predictedLine = None
 
     acc_line = []
@@ -95,7 +91,7 @@ def findLines(cont):
     isFirstLine = True
 
     while i < len_cm:
-        if i+2>len_c and len(predictedLines) > 0 and (i+2) % len_c > predictedLines[0][0] % len_c:
+        if i+2 > len_c and len(predictedLines) > 0 and (i+2) % len_c > predictedLines[0][0] % len_c:
             break
 
         if type(pa) == type(None):
@@ -129,9 +125,16 @@ def findLines(cont):
                 if not lineWasFound:
                     predictedLine = [(i) % len_c, (i+1) % len_c]
                     predictedLines.append(predictedLine)
+
+                    pointLineSegment = [pa, pc]
+                    pointLineSegments.append(pointLineSegment)
+
                     predictedDistances.append(dis_ac)
+
                 else:
                     predictedLine[1] = (i+1) % len_c
+                    pointLineSegment[1] = pc
+
                     predictedDistances[len(predictedDistances)-1] = dis_ac
 
             if len(acc_line) == 0:
@@ -168,6 +171,7 @@ def findLines(cont):
                 if calc_distance(pl1, pl2) < 5:
                     predictedLines.pop()
                     predictedDistances.pop()
+                    pointLineSegments.pop()
                 predictedLine = None
 
             # change variable like
@@ -195,7 +199,44 @@ def findLines(cont):
         i += 1
         # end while i < len_cc
 
-    return predictedLines, predictedDistances
+    return predictedLines, pointLineSegments, predictedDistances
+
+
+def checkIfParallelogram(lineIndeces, lines, distances):
+    len_c = len(lines)
+    if len_c<4:
+        return None
+
+    i=0
+    sideCount = 0
+    copyDist = distances.copy()
+
+    copyDist.sort(reverse=True)
+    minDistance = copyDist[3]
+    cutOutDistance = int(minDistance/10)
+
+    linePairs = []
+
+    while i<len_c:
+        dis = distances[i]
+        line = lines[i]
+
+        if dis >= minDistance:
+            linePairs.append(line)
+        elif dis > cutOutDistance:
+            return None
+        i+=1
+
+    if len(linePairs) != 4:
+        return None
+
+    return linePairs
+
+
+debugit = False
+ind = 0
+mind = -1
+printit = False
 
 
 def qrcodescan(frame):
@@ -208,21 +249,24 @@ def qrcodescan(frame):
     contours, _ = cv2.findContours(
         thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-    #contours = [contours[poly_interest]]
+    contours = [contours[poly_interest]]
 
     if not debugit:
         for cont in contours:
-            predictedLines, distances = findLines(cont)
+            predictedLines, pointLineSegments, distances = findLines(cont)
+            lines = checkIfParallelogram(predictedLines, pointLineSegments, distances)
+            
+            if type(lines) == type(None):
+                continue
 
-            len_c = len(cont)
-            colors = [(0, 175, 255), (0, 180, 0), (255, 255, 0), (255, 0, 0)]
+            colors = [(255, 255, 0),(0, 175, 255), (0, 180, 0), (255, 0, 0)]
             firstColor = (0, 0, 255)
             ic = 0
             lc = len(colors)
             doFirstColor = True
-            for lineIndices in predictedLines:
-                pa = cont[lineIndices[0] % len_c][0]
-                pb = cont[(lineIndices[1]+1) % len_c][0]
+            for lineSegment in pointLineSegments:
+                pa = lineSegment[0]
+                pb = lineSegment[1]
                 if doFirstColor:
                     doFirstColor = False
 
