@@ -305,31 +305,6 @@ def qrcodescan(frame):
                 predictedLines, pointLineSegments, distances)
 
             if type(lines) == type(None):
-                colors = [
-                    (0, 0, 255),
-                    (0x85, 0xbd, 0x03),
-                    (0x4e, 0x36, 0x92),
-                    (0x02, 0xdd, 0xfe),
-                    (0xec, 0x85, 0x5c),
-                    (0x46, 0x02, 0xfb)
-                ]
-
-                color_i = -1
-                color_l = len(colors)-1
-
-                for lineSegment in pointLineSegments:
-                    pa = lineSegment[0]
-                    pb = lineSegment[1]
-
-                    if color_i == -1:
-                        color = colors[0]
-                    else:
-                        color = colors[(color_i % color_l)+1]
-
-                    cv2.line(frame, toplePoint(pa), toplePoint(pb), color, 2)
-
-                    color_i += 1
-
                 continue
 
             firstColor = (0, 0, 255)
