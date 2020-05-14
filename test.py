@@ -2,7 +2,9 @@ import numpy as np
 import cv2
 import math
 
-poly_interest = -1
+poly_interest =-1
+#poly_interest = 43
+
 
 
 def capture():
@@ -63,6 +65,9 @@ def deviation(a, b, c):
 
 
 def findLines(cont):
+    validLineThreshold = 5
+    distanceToleraneThreshold = 1
+
     i = 0
     len_c = len(cont)
     len_cm = int(len_c*1.3)
@@ -108,16 +113,18 @@ def findLines(cont):
         if type(dis_ac) == type(None):
             dis_ac = calc_distance(pa, pc)
 
-        # if type(ang_ab) == type(None):
-        #     ang_ab = angle1(pa, pb)
-        # if type(ang_bc) == type(None):
-        #     ang_bc = angle1(pb, pc)
-        # if type(ang_ac) == type(None):
-        #     ang_ac = angle1(pa, pc)
+        #if type(ang_ab) == type(None):
+        #   ang_ab = calc_angle(pa, pb)
+        #if type(ang_bc) == type(None):
+        #   ang_bc = calc_angle(pb, pc)
+        #if type(ang_ac) == type(None):
+        #   ang_ac = calc_angle(pa, pc)
 
         didMerge = False
 
-        if dis_ab + dis_bc - dis_ac <= 0.5:
+        dis_err = dis_ab + dis_bc - dis_ac
+
+        if dis_err <= distanceToleraneThreshold:
             didMerge = True
 
         if didMerge:
@@ -156,10 +163,6 @@ def findLines(cont):
             dis_bc = None
             dis_ac = None
 
-            # ang_ab = ang_ac
-            # ang_bc = None
-            # ang_ac = None
-
             lineWasFound = True
 
         else:
@@ -168,11 +171,27 @@ def findLines(cont):
                 pl1 = cont[predictedLine[0] % len_c][0]
                 pl2 = cont[(predictedLine[1]+1) % len_c][0]
 
-                if calc_distance(pl1, pl2) < 5:
+                if calc_distance(pl1, pl2) < validLineThreshold:
                     predictedLines.pop()
                     predictedDistances.pop()
                     pointLineSegments.pop()
                 predictedLine = None
+
+            # no line was found by merger
+            lineWasFound = False
+
+            # check if the line B-C is long enough
+            # to be considered an individual line itself
+            if dis_bc >= validLineThreshold:
+                if not isFirstLine:
+                    predictedLine = [(i+1) % len_c, (i+1) % len_c]
+                    predictedLines.append(predictedLine)
+
+                    pointLineSegment = [pb, pc]
+                    pointLineSegments.append(pointLineSegment)
+
+                    predictedDistances.append(dis_bc)
+                    lineWasFound = True
 
             # change variable like
             #
@@ -189,11 +208,6 @@ def findLines(cont):
             dis_bc = None
             dis_ac = None
 
-            # ang_ab = ang_bc
-            # ang_bc = None
-            # ang_ac = None
-
-            lineWasFound = False
             isFirstLine = False
             # end if
         i += 1
@@ -231,21 +245,27 @@ def checkIfQuadrilateral(lineIndeces, lines, distances):
         return None, None
 
     firstAngle = 0
-    i=0
+    i = 0
     while i < len_p:
         pa = linePairs[i][0]
         pb = linePairs[i][1]
-        pc = linePairs[(i+1)%len_p][0]
-        pd = linePairs[(i+1)%len_p][1]
+        pc = linePairs[(i+1) % len_p][0]
+        pd = linePairs[(i+1) % len_p][1]
 
         ang1 = calc_angle(pa, pb)
         ang2 = calc_angle(pc, pd)
 
         del_ang = ang2 - ang1
-        if ang1 < -90 and ang2 > 90:
-            del_ang -= 360
-        elif ang2 < -90 and ang1 > 90:
-            del_ang += 360
+        # if ang1 < -90 and ang2 > 90:
+        #     del_ang -= 360
+        # elif ang2 < -90 and ang1 > 90:
+        #     del_ang += 360
+
+        if del_ang>180:
+            del_ang -= (math.floor(del_ang / 360) + 1) * 360
+
+        elif del_ang<-180:
+            del_ang += (math.floor(abs(del_ang) / 360) + 1) * 360
 
         if firstAngle == 0:
             if del_ang > 0:
@@ -255,7 +275,7 @@ def checkIfQuadrilateral(lineIndeces, lines, distances):
         else:
             if firstAngle * del_ang <= 0:
                 return None, None
-        i+=1
+        i += 1
     return linePairs, firstAngle
 
 
@@ -275,7 +295,7 @@ def qrcodescan(frame):
     contours, _ = cv2.findContours(
         thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-    if poly_interest !=-1:
+    if poly_interest != -1:
         contours = [contours[poly_interest]]
 
     if not debugit:
@@ -285,18 +305,41 @@ def qrcodescan(frame):
                 predictedLines, pointLineSegments, distances)
 
             if type(lines) == type(None):
+                colors = [
+                    (0, 0, 255),
+                    (0x85, 0xbd, 0x03),
+                    (0x4e, 0x36, 0x92),
+                    (0x02, 0xdd, 0xfe),
+                    (0xec, 0x85, 0x5c),
+                    (0x46, 0x02, 0xfb)
+                ]
+
+                color_i = -1
+                color_l = len(colors)-1
+
+                for lineSegment in pointLineSegments:
+                    pa = lineSegment[0]
+                    pb = lineSegment[1]
+
+                    if color_i == -1:
+                        color = colors[0]
+                    else:
+                        color = colors[(color_i % color_l)+1]
+
+                    cv2.line(frame, toplePoint(pa), toplePoint(pb), color, 2)
+
+                    color_i += 1
+
                 continue
 
-            
             firstColor = (0, 0, 255)
-            secondColor = (255,0,0)
+            secondColor = (255, 0, 0)
             ic = 0
-            
 
             for lineSegment in lines:
                 pa = lineSegment[0]
                 pb = lineSegment[1]
-            
+
                 if direction == 1:
                     cv2.line(frame, toplePoint(pa),
                              toplePoint(pb), firstColor, 2)
@@ -310,7 +353,7 @@ def qrcodescan(frame):
         # end if not degugit
 
     else:
-        cont = contours[ind]
+        cont = contours[ind % len(contours)]
         len_c = len(cont)
         if mind == -1:
             i = 0
@@ -418,7 +461,7 @@ def scan():
     cv2.destroyAllWindows()
 
 
-# checkfn()
+#checkfn()
 scan()
 
 exit
