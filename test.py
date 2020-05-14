@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 import math
 
-poly_interest = 105
+poly_interest = -1
 
 
 def capture():
@@ -23,7 +23,7 @@ def calc_distance(a, b):
 
 
 def calc_angle(a, b):
-    return math.atan2(b[1]-b[0], a[1]-a[0])*180/math.pi
+    return math.atan2(b[1]-a[1], b[0]-a[0])*180/math.pi
 
 
 def line_intersection(line1, line2):
@@ -202,35 +202,61 @@ def findLines(cont):
     return predictedLines, pointLineSegments, predictedDistances
 
 
-def checkIfParallelogram(lineIndeces, lines, distances):
+def checkIfQuadrilateral(lineIndeces, lines, distances):
     len_c = len(lines)
-    if len_c<4:
-        return None
+    if len_c < 4:
+        return None, None
 
-    i=0
-    sideCount = 0
+    i = 0
     copyDist = distances.copy()
 
     copyDist.sort(reverse=True)
     minDistance = copyDist[3]
-    cutOutDistance = int(minDistance/10)
+    cutOutDistance = int(minDistance*0.20)
 
     linePairs = []
 
-    while i<len_c:
+    while i < len_c:
         dis = distances[i]
         line = lines[i]
 
         if dis >= minDistance:
             linePairs.append(line)
         elif dis > cutOutDistance:
-            return None
+            return None, None
+        i += 1
+
+    len_p = len(linePairs)
+    if len_p != 4:
+        return None, None
+
+    firstAngle = 0
+    i=0
+    while i < len_p:
+        pa = linePairs[i][0]
+        pb = linePairs[i][1]
+        pc = linePairs[(i+1)%len_p][0]
+        pd = linePairs[(i+1)%len_p][1]
+
+        ang1 = calc_angle(pa, pb)
+        ang2 = calc_angle(pc, pd)
+
+        del_ang = ang2 - ang1
+        if ang1 < -90 and ang2 > 90:
+            del_ang -= 360
+        elif ang2 < -90 and ang1 > 90:
+            del_ang += 360
+
+        if firstAngle == 0:
+            if del_ang > 0:
+                firstAngle = 1
+            else:
+                firstAngle = -1
+        else:
+            if firstAngle * del_ang <= 0:
+                return None, None
         i+=1
-
-    if len(linePairs) != 4:
-        return None
-
-    return linePairs
+    return linePairs, firstAngle
 
 
 debugit = False
@@ -249,32 +275,34 @@ def qrcodescan(frame):
     contours, _ = cv2.findContours(
         thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-    contours = [contours[poly_interest]]
+    if poly_interest !=-1:
+        contours = [contours[poly_interest]]
 
     if not debugit:
         for cont in contours:
             predictedLines, pointLineSegments, distances = findLines(cont)
-            lines = checkIfParallelogram(predictedLines, pointLineSegments, distances)
-            
+            lines, direction = checkIfQuadrilateral(
+                predictedLines, pointLineSegments, distances)
+
             if type(lines) == type(None):
                 continue
 
-            colors = [(255, 255, 0),(0, 175, 255), (0, 180, 0), (255, 0, 0)]
+            
             firstColor = (0, 0, 255)
+            secondColor = (255,0,0)
             ic = 0
-            lc = len(colors)
-            doFirstColor = True
-            for lineSegment in pointLineSegments:
+            
+
+            for lineSegment in lines:
                 pa = lineSegment[0]
                 pb = lineSegment[1]
-                if doFirstColor:
-                    doFirstColor = False
-
+            
+                if direction == 1:
                     cv2.line(frame, toplePoint(pa),
                              toplePoint(pb), firstColor, 2)
                 else:
                     cv2.line(frame, toplePoint(pa),
-                             toplePoint(pb), colors[ic % lc], 2)
+                             toplePoint(pb), secondColor, 2)
                 ic += 1
 
             # end for cont in contours
@@ -390,7 +418,7 @@ def scan():
     cv2.destroyAllWindows()
 
 
-checkfn()
-# scan()
+# checkfn()
+scan()
 
 exit
